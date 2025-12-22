@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Comparator</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="app-layout">
+    
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h3>Comparator Tool</h3>
+        </div>
+
+        <div class="vertical-nav">
+            <div class="v-step active" id="navStep1" onclick="jumpToStep(1)">
+                <span class="v-num">1</span> <span class="v-text">Paste Data</span>
+            </div>
+            <div class="v-step" id="navStep2" onclick="jumpToStep(2)">
+                <span class="v-num">2</span> <span class="v-text">Clean Data</span>
+            </div>
+            <div class="v-step" id="navStep3" onclick="jumpToStep(3)">
+                <span class="v-num">3</span> <span class="v-text">Map Columns</span>
+            </div>
+            <div class="v-step" id="navStep4" onclick="jumpToStep(4)">
+                <span class="v-num">4</span> <span class="v-text">Results</span>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <button onclick="cleanAllSets()" class="btn-sidebar btn-secondary">
+                ✨ Clean Data
+            </button>
+            <button onclick="runAllComparisons()" class="btn-sidebar btn-run-all">
+                ▶ Run Analysis
+            </button>
+        </div>
+    </aside>
+
+    <div class="main-wrapper">
+        
+        <header class="top-bar">
+            <div class="tabs-container">
+                <div class="tab-item" id="tabOverview" onclick="showOverview()">
+                    📊 Overview
+                </div>
+                <div id="projectTabs" class="project-tabs"></div>
+            </div>
+
+            <div class="top-actions-right">
+                <input type="number" id="addSetQty" value="1" min="1" max="50" 
+                       class="qty-input" oninput="updateAddButtonText()" title="Number of sets">
+                <button id="btnAddSets" onclick="addSetsFromInput()" class="btn-top-add">
+                    + Add Set
+                </button>
+            </div>
+        </header>
+
+        <main class="content-area">
+
+            <div id="overviewSection" class="page-section fade-in">
+                <div class="section-header">
+                    <h2>Overall Result</h2>
+                    <p>Summary of all comparison sets.</p>
+                </div>
+                <div id="overviewStats" class="dashboard-stats"></div>
+                <div class="table-box" style="margin-top:20px;">
+                    <div class="table-box" style="margin-top:20px;">
+    <table class="clean-table" id="overviewTable">
+        <thead>
+            <tr>
+                <th>Set Name</th>
+                <th>Status</th>
+                <th>Source Rows</th>   <th>Extracted Rows</th><th>Matches</th>
+                <th>Mismatches</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="overviewBody"></tbody>
+    </table>
+</div>
+                </div>
+            </div>
+
+            <div id="step1" class="page-section fade-in" style="display:none;">
+                <div class="section-header">
+                    <h2>Step 1: Paste Data</h2>
+                    <div class="header-actions">
+                        <button onclick="clearCurrentProject()" class="btn-ghost">Clear</button>
+                        <button onclick="goToPreview()" class="btn-primary">Next: Clean →</button>
+                    </div>
+                </div>
+
+                <div class="input-grid-container">
+                    <div class="tables-row">
+                        <div class="input-card">
+                            <div class="card-head blue-head">
+                                <label>Table 1 — Source</label>
+                                <select id="headerModeA" class="mini-select"><option value="1row">1 Header Row</option><option value="2rows">2 Header Rows</option></select>
+                            </div>
+                            <textarea id="tableA" placeholder="Paste Source Data..."></textarea>
+                        </div>
+                        <div class="input-card">
+                            <div class="card-head green-head">
+                                <label>Table 2 — Extracted</label>
+                                <select id="headerModeB" class="mini-select"><option value="1row">1 Header Row</option><option value="2rows">2 Header Rows</option></select>
+                            </div>
+                            <textarea id="tableB" placeholder="Paste Extracted Data..."></textarea>
+                        </div>
+                    </div>
+                    
+                    <button onclick="toggleMatrix()" class="btn-secondary" id="btnToggleMatrix" style="width:100%; margin-top:20px;">
+                        + Show Matrix Rules (Optional)
+                    </button>
+                    
+                    <div id="matrixSection" style="display:none;">
+                        <div class="matrix-split-view">
+                            <div class="matrix-source">
+                                <label style="font-size:12px; font-weight:bold; color:#64748b; margin-bottom:5px;">Paste Rules Here</label>
+                                <textarea id="matrixRawInput" placeholder='Example: "ADAPTIVE need" NO' oninput="autoParseMatrix()"></textarea>
+                            </div>
+                            
+                            <div class="matrix-divider">➜</div>
+                            
+                            <div class="matrix-editor">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                                    <label style="font-size:12px; font-weight:bold; color:#64748b;">Active Rules</label>
+                                    <button onclick="addMatrixRow()" class="btn-small-dashed" style="margin:0;">+ Add</button>
+                                </div>
+                                <div id="matrixList" class="matrix-list"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div id="step2" class="page-section fade-in" style="display:none;">
+                <div class="section-header">
+                    <h2>Step 2: Clean Data</h2>
+                    <div class="header-actions">
+                        <button onclick="jumpToStep(1)" class="btn-secondary">← Back</button>
+                        <button onclick="goToMapping()" class="btn-primary">Next: Map →</button>
+                    </div>
+                </div>
+                <div class="tables-grid">
+                    <div class="table-box">
+                        <div class="box-header blue-bg">Source (<span id="countA">0</span> rows)</div>
+                        <div class="scroll-wrap"><table id="previewTableA" class="clean-table"></table></div>
+                    </div>
+                    <div class="table-box">
+                        <div class="box-header green-bg">Extracted (<span id="countB">0</span> rows)</div>
+                        <div class="scroll-wrap"><table id="previewTableB" class="clean-table"></table></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="step3" class="page-section fade-in" style="display:none;">
+                <div class="section-header">
+                    <div style="display:flex; flex-direction:column;">
+                        <h2>Step 3: Map Columns</h2>
+                        <span id="unmappedList" class="unmapped-badge" style="background:#fee2e2; color:#b91c1c; border:1px solid #ef4444; padding:5px 10px; border-radius:4px; margin-top:5px; font-weight:bold;">
+                            ⚠ Checking Mapping...
+                        </span>
+                    </div>
+                    <div class="header-actions">
+                        <button onclick="jumpToStep(2)" class="btn-secondary">← Back</button>
+                        <button onclick="generateResults()" class="btn-success">Run Analysis →</button>
+                    </div>
+                </div>
+                <div class="card full-height">
+                    <div class="scroll-wrap">
+                        <table class="mapping-table">
+                            <thead>
+                                <tr>
+                                    <th width="40%">Source / Matrix</th>
+                                    <th width="5%"></th>
+                                    <th width="40%">Map To Extracted</th>
+                                    <th width="15%" style="text-align:center">Include</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mappingBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="step4" class="page-section fade-in" style="display:none;">
+                <div class="section-header">
+                    <h2>Step 4: Results</h2>
+                    <div class="header-actions">
+                        <button onclick="jumpToStep(3)" class="btn-secondary">← Back to Map</button>
+                    </div>
+                </div>
+                
+                <div id="globalStats" class="dashboard-stats"></div>
+                <div id="summaryCards" class="cards-grid"></div>
+                
+                <div class="tables-grid">
+                    <div class="table-box">
+                        <div class="box-header blue-bg">Source Results</div>
+                        <div class="scroll-wrap"><table id="renderTableA"></table></div>
+                    </div>
+                    <div class="table-box">
+                        <div class="box-header green-bg">Extracted Results</div>
+                        <div class="scroll-wrap"><table id="renderTableB"></table></div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<div id="toast" class="toast hidden">
+    <span>Action completed.</span>
+</div>
+
+<script src="assets/script.js"></script>
+</body>
+</html>
