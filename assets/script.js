@@ -1,5 +1,3 @@
-/* script.js - Final Production Version (No PO Logic + All Fixes) */
-
 // ==========================================
 // 1. GLOBAL VARIABLES & INITIALIZATION
 // ==========================================
@@ -168,11 +166,18 @@ function createSet(customName = null, groupFile = null) {
 function handleBulkUpload(input) {
     if (!input.files || input.files.length === 0) return;
 
+    // --- FIX: Save current state first so we don't lose manual edits ---
+    saveCurrentViewToProject(); 
+    
     const files = Array.from(input.files);
     let totalCreated = 0;
     
-    // Reset logic if app is empty
-    if (projects.length === 1 && projects[0].status === 'empty' && !projects[0].rawA) {
+    // Updated Safe Check: Check BOTH tables before wiping
+    // We only wipe if we are on the first empty set AND both tables are visually empty
+    const currentA = document.getElementById('tableA').value.trim();
+    const currentB = document.getElementById('tableB').value.trim(); 
+
+    if (projects.length === 1 && projects[0].status === 'empty' && !projects[0].rawA && !currentA && !currentB) {
         projects = []; 
         activeProjectIdx = -1;
     }
@@ -184,8 +189,13 @@ function handleBulkUpload(input) {
             if (totalCreated > 0) {
                 renderTopBar();
                 showModal("Import Successful", `Loaded <strong>${totalCreated}</strong> sheet(s).`, "success");
-                activeProjectIdx = 0;
-                switchProject(0, true); 
+                
+                // If we wiped the initial empty set, switch to 0. Otherwise switch to the first NEW set.
+                let targetIdx = (activeProjectIdx === -1) ? 0 : (projects.length - totalCreated);
+                if (targetIdx < 0) targetIdx = 0;
+                
+                activeProjectIdx = targetIdx;
+                switchProject(targetIdx, true); 
             } else {
                 showModal("No Data Found", "Sheets were empty, hidden, or had 0 Quantity.", "error");
             }
@@ -773,6 +783,9 @@ function jumpToStep(step) {
 
 function handleCPQUpload(input) {
     if (!input.files || input.files.length === 0) return;
+
+    // --- FIX: Save Table 1 data before processing Table 2 upload ---
+    saveCurrentViewToProject();
 
     const files = Array.from(input.files).sort((a, b) => a.lastModified - b.lastModified);
     
