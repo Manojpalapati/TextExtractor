@@ -68,6 +68,28 @@
                     </button>
                 </div>
 
+                <!-- OCR Toggle (PDF only) -->
+                <div id="ocrToggleRow" style="display:none; align-items:center; justify-content:space-between;
+                     background:#faf5ff; border:1px solid #ddd6fe; border-radius:10px; padding:10px 14px;">
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                        <span style="font-size:12px; font-weight:700; color:#6d28d9;"><i class="fas fa-eye"
+                                style="margin-right:5px;"></i>Full OCR Mode</span>
+                        <span style="font-size:11px; color:#7c3aed;">Renders each page as image — use for
+                            label/graphical PDFs</span>
+                    </div>
+                    <label style="position:relative; display:inline-block; width:42px; height:24px; cursor:pointer;">
+                        <input type="checkbox" id="forceOcrToggle" style="opacity:0; width:0; height:0;">
+                        <span id="toggleSlider" onclick="updateToggleStyle()" style="position:absolute; inset:0;
+                            background:#cbd5e1; border-radius:99px; transition:background 0.2s;
+                            cursor:pointer;">
+                            <span style="position:absolute; height:18px; width:18px; background:white;
+                                border-radius:50%; top:3px; left:3px;
+                                transition:transform 0.2s; box-shadow:0 1px 4px rgba(0,0,0,0.2);
+                                display:block;" id="toggleKnob"></span>
+                        </span>
+                    </label>
+                </div>
+
                 <!-- Hidden file inputs -->
                 <input type="file" id="imageFileInput" accept="image/*" style="display:none"
                     onchange="handleFileSelected(this.files[0])">
@@ -179,6 +201,9 @@
             document.getElementById('tabImage').classList.toggle('active', mode === 'image');
             document.getElementById('tabPdf').classList.toggle('active', mode === 'pdf');
 
+            // Show OCR toggle only in PDF mode
+            document.getElementById('ocrToggleRow').style.display = (mode === 'pdf') ? 'flex' : 'none';
+
             const dzSub = document.getElementById('dzSub');
             const dzIcon = document.getElementById('dzIcon');
             const badge = document.getElementById('fileTypeBadge');
@@ -197,6 +222,21 @@
                 badge.style.color = '#dc2626';
                 badge.style.background = '#fef2f2';
                 badge.style.borderColor = '#fca5a5';
+            }
+        }
+
+        // Toggle UI visual update
+        function updateToggleStyle() {
+            const cb = document.getElementById('forceOcrToggle');
+            cb.checked = !cb.checked;
+            const knob = document.getElementById('toggleKnob');
+            const slider = document.getElementById('toggleSlider');
+            if (cb.checked) {
+                slider.style.background = '#7c3aed';
+                knob.style.transform = 'translateX(18px)';
+            } else {
+                slider.style.background = '#cbd5e1';
+                knob.style.transform = 'translateX(0)';
             }
         }
 
@@ -396,29 +436,42 @@
             return data.text.trim();
         }
 
-        // -------- PDF (PDF.js text layer + OCR fallback) --------
+        // -------- PDF (PDF.js text layer + smart OCR fallback) --------
         async function extractFromPdf(file) {
             showProgress(10, 'Reading PDF…');
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             const total = pdf.numPages;
             let fullText = '';
-            let needsOcr = false;
+            let needsOcr = document.getElementById('forceOcrToggle').checked;
             let ocrWorker = null;
 
-            // First pass: check if this is a scanned PDF (no text layer on page 1)
-            try {
-                const firstPage = await pdf.getPage(1);
-                const firstContent = await firstPage.getTextContent();
-                const firstText = buildPageTextFromItems(firstContent.items);
-                if (firstText.trim().length < 10) {
-                    needsOcr = true;
-                    showProgress(12, 'Scanned PDF detected – Loading OCR engine…');
-                    ocrWorker = await Tesseract.createWorker('eng', 1, {
-                        logger: () => { }  // suppress verbose logs
-                    });
-                }
-            } catch (e) { /* continue */ }
+            // Auto-detect: sample up to 3 pages and check average text volume.
+            // If avg < 500 chars/page the PDF is likely graphical (label, scan, design)
+            // and OCR is needed to capture all visible content.
+            if (!needsOcr) {
+                try {
+                    const samplePages = Math.min(total, 3);
+                    let totalChars = 0;
+                    for (let s = 1; s <= samplePages; s++) {
+                        const sp = await pdf.getPage(s);
+                        const sc = await sp.getTextContent();
+                        totalChars += buildPageTextFromItems(sc.items).length;
+                    }
+                    const avgChars = totalChars / samplePages;
+                    if (avgChars < 500) {
+                        needsOcr = true;
+                        showProgress(12, `Low text layer detected (avg ${Math.round(avgChars)} chars/page) – switching to Full OCR…`);
+                    }
+                } catch (e) { /* continue */ }
+            }
+
+            if (needsOcr) {
+                showProgress(14, 'Loading OCR engine…');
+                ocrWorker = await Tesseract.createWorker('eng', 1, {
+                    logger: () => { }
+                });
+            }
 
             for (let i = 1; i <= total; i++) {
                 const pct = Math.round((i / total) * 80);
