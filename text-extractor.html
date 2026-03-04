@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Extractor – Smart Data Comparator</title>
+    <meta name="description"
+        content="Extract text from images or PDF files instantly with the Smart Data Comparator Text Extractor tool.">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/style.css">
+
+    <!-- PDF.js for PDF text extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- Tesseract.js for OCR (image text extraction) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+
+<body class="extractor-body">
+
+    <!-- Header -->
+    <header class="extractor-header">
+        <a href="index.html" class="brand">
+            <i class="fas fa-database"></i>
+            Smart Data Comparator
+        </a>
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-size:13px; color:#64748b; font-weight:600;">
+                <i class="fas fa-file-alt" style="color:#7c3aed; margin-right:6px;"></i>Text Extractor
+            </span>
+            <a href="index.html" class="back-link">
+                <i class="fas fa-arrow-left"></i> Back to Home
+            </a>
+        </div>
+    </header>
+
+    <!-- Title Bar -->
+    <div class="extractor-title-bar">
+        <h1><i class="fas fa-magic" style="color:#7c3aed; margin-right:10px; font-size:1.6rem;"></i>Text Extractor</h1>
+        <p>Upload an image or PDF — all text will be extracted and displayed instantly beside it.</p>
+    </div>
+
+    <!-- Workspace: two panels side by side -->
+    <div class="extractor-workspace">
+
+        <!-- ===== LEFT: UPLOAD PANEL ===== -->
+        <div class="upload-panel">
+            <div class="panel-header">
+                <div class="panel-header-left">
+                    <i class="fas fa-upload"></i>
+                    <span>Upload File</span>
+                </div>
+                <span id="fileTypeBadge"
+                    style="font-size:11px; font-weight:700; color:#7c3aed; background:#f5f3ff; padding:4px 10px; border-radius:20px; border:1px solid #ddd6fe; display:none;">
+                    IMAGE
+                </span>
+            </div>
+
+            <div class="panel-body">
+                <!-- Mode Tabs -->
+                <div class="upload-type-tabs">
+                    <button class="upload-tab active" id="tabImage" onclick="switchMode('image')">
+                        <i class="fas fa-image"></i> Image
+                    </button>
+                    <button class="upload-tab" id="tabPdf" onclick="switchMode('pdf')">
+                        <i class="fas fa-file-pdf"></i> PDF
+                    </button>
+                </div>
+
+                <!-- Hidden file inputs -->
+                <input type="file" id="imageFileInput" accept="image/*" style="display:none"
+                    onchange="handleFileSelected(this.files[0])">
+                <input type="file" id="pdfFileInput" accept="application/pdf" style="display:none"
+                    onchange="handleFileSelected(this.files[0])">
+
+                <!-- Drop Zone -->
+                <div class="drop-zone" id="dropZone" onclick="triggerFileInput()" ondragover="onDragOver(event)"
+                    ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+                    <i class="fas fa-cloud-upload-alt dz-icon" id="dzIcon"></i>
+                    <div class="dz-title" id="dzTitle">Drag & Drop your file here</div>
+                    <div class="dz-sub" id="dzSub">Supports JPG, PNG, WEBP, BMP, TIFF</div>
+                    <button class="dz-btn" onclick="event.stopPropagation(); triggerFileInput()">
+                        <i class="fas fa-folder-open" style="margin-right:6px;"></i>Browse File
+                    </button>
+                </div>
+
+                <!-- Preview (hidden until file loaded) -->
+                <div id="previewSection" style="display:none;" class="preview-container">
+                    <div class="preview-file-info">
+                        <i class="fas fa-check-circle file-icon"></i>
+                        <span class="file-name" id="previewFileName">filename.png</span>
+                        <button class="btn-remove" onclick="removeFile()" title="Remove file">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <!-- Image preview -->
+                    <div class="image-preview" id="imagePreview" style="display:none;">
+                        <img id="previewImg" src="" alt="Preview">
+                    </div>
+                    <!-- PDF thumbnail grid -->
+                    <div class="pdf-pages-preview" id="pdfPagesPreview" style="display:none;"></div>
+                </div>
+
+                <!-- Progress -->
+                <div class="extract-progress" id="extractProgress">
+                    <div class="progress-bar-wrap">
+                        <div class="progress-bar-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-label" id="progressLabel">Initialising…</div>
+                </div>
+
+                <!-- Extract Button -->
+                <div class="extract-action-bar">
+                    <button class="btn-extract" id="btnExtract" onclick="extractText()" disabled>
+                        <i class="fas fa-magic"></i>
+                        <span id="btnExtractLabel">Extract Text</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== RIGHT: OUTPUT PANEL ===== -->
+        <div class="output-panel">
+            <!-- Toolbar -->
+            <div class="output-toolbar">
+                <div class="panel-header-left" style="gap:8px;">
+                    <i class="fas fa-align-left" style="color:#7c3aed;"></i>
+                    <span style="font-weight:700; font-size:15px; color:#1e293b;">Extracted Text</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div class="output-stats" id="outputStats" style="display:none;">
+                        <span class="stat-pill" id="wordCount">0 words</span>
+                        <span class="stat-pill" id="charCount" style="background:#f5f3ff; color:#7c3aed;">0 chars</span>
+                    </div>
+                    <div class="output-actions">
+                        <button class="btn-copy-text" id="btnCopy" onclick="copyText()" style="display:none;">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                        <button class="btn-clear-text" id="btnClear" onclick="clearOutput()" style="display:none;">
+                            <i class="fas fa-trash-alt"></i> Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div class="output-empty-state" id="emptyState">
+                <i class="fas fa-file-search"></i>
+                <p>Upload a file on the left and click <strong>Extract Text</strong> to see all extracted content here.
+                </p>
+            </div>
+
+            <!-- Text Output -->
+            <textarea class="extracted-text-area" id="extractedTextArea" style="display:none;"
+                placeholder="Extracted text will appear here…" readonly></textarea>
+        </div>
+
+    </div>
+
+    <script>
+        // =============================
+        //  STATE
+        // =============================
+        let currentMode = 'image';   // 'image' | 'pdf'
+        let currentFile = null;
+
+        // PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // =============================
+        //  MODE SWITCH
+        // =============================
+        function switchMode(mode) {
+            currentMode = mode;
+            removeFile();
+
+            document.getElementById('tabImage').classList.toggle('active', mode === 'image');
+            document.getElementById('tabPdf').classList.toggle('active', mode === 'pdf');
+
+            const dzSub = document.getElementById('dzSub');
+            const dzIcon = document.getElementById('dzIcon');
+            const badge = document.getElementById('fileTypeBadge');
+
+            if (mode === 'image') {
+                dzSub.textContent = 'Supports JPG, PNG, WEBP, BMP, TIFF';
+                dzIcon.className = 'fas fa-image dz-icon';
+                badge.textContent = 'IMAGE';
+                badge.style.color = '#2563eb';
+                badge.style.background = '#eff6ff';
+                badge.style.borderColor = '#bfdbfe';
+            } else {
+                dzSub.textContent = 'Supports PDF files (all pages will be extracted)';
+                dzIcon.className = 'fas fa-file-pdf dz-icon';
+                badge.textContent = 'PDF';
+                badge.style.color = '#dc2626';
+                badge.style.background = '#fef2f2';
+                badge.style.borderColor = '#fca5a5';
+            }
+        }
+
+        // =============================
+        //  FILE INPUT TRIGGER
+        // =============================
+        function triggerFileInput() {
+            if (currentMode === 'image') {
+                document.getElementById('imageFileInput').click();
+            } else {
+                document.getElementById('pdfFileInput').click();
+            }
+        }
+
+        // =============================
+        //  DRAG & DROP
+        // =============================
+        function onDragOver(e) {
+            e.preventDefault();
+            document.getElementById('dropZone').classList.add('drag-over');
+        }
+
+        function onDragLeave(e) {
+            document.getElementById('dropZone').classList.remove('drag-over');
+        }
+
+        function onDrop(e) {
+            e.preventDefault();
+            document.getElementById('dropZone').classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) handleFileSelected(file);
+        }
+
+        // =============================
+        //  FILE SELECTED
+        // =============================
+        function handleFileSelected(file) {
+            if (!file) return;
+
+            // Auto-detect mode from type
+            if (file.type === 'application/pdf') {
+                currentMode = 'pdf';
+                switchModeUI('pdf');
+            } else if (file.type.startsWith('image/')) {
+                currentMode = 'image';
+                switchModeUI('image');
+            } else {
+                alert('Unsupported file type. Please upload an image or PDF.');
+                return;
+            }
+
+            currentFile = file;
+
+            // Show badge
+            document.getElementById('fileTypeBadge').style.display = 'inline-flex';
+
+            // Show preview section
+            document.getElementById('previewSection').style.display = 'flex';
+            document.getElementById('dropZone').style.display = 'none';
+            document.getElementById('previewFileName').textContent = file.name;
+
+            // Render preview
+            if (currentMode === 'image') {
+                const url = URL.createObjectURL(file);
+                document.getElementById('previewImg').src = url;
+                document.getElementById('imagePreview').style.display = 'block';
+                document.getElementById('pdfPagesPreview').style.display = 'none';
+            } else {
+                document.getElementById('imagePreview').style.display = 'none';
+                document.getElementById('pdfPagesPreview').style.display = 'grid';
+                renderPdfThumbnails(file);
+            }
+
+            // Enable extract button
+            document.getElementById('btnExtract').disabled = false;
+        }
+
+        function switchModeUI(mode) {
+            currentMode = mode;
+            document.getElementById('tabImage').classList.toggle('active', mode === 'image');
+            document.getElementById('tabPdf').classList.toggle('active', mode === 'pdf');
+        }
+
+        // =============================
+        //  REMOVE FILE
+        // =============================
+        function removeFile() {
+            currentFile = null;
+            document.getElementById('previewSection').style.display = 'none';
+            document.getElementById('dropZone').style.display = 'flex';
+            document.getElementById('fileTypeBadge').style.display = 'none';
+            document.getElementById('previewImg').src = '';
+            document.getElementById('pdfPagesPreview').innerHTML = '';
+            document.getElementById('imageFileInput').value = '';
+            document.getElementById('pdfFileInput').value = '';
+            document.getElementById('btnExtract').disabled = true;
+            hideProgress();
+        }
+
+        // =============================
+        //  PDF THUMBNAILS
+        // =============================
+        async function renderPdfThumbnails(file) {
+            const container = document.getElementById('pdfPagesPreview');
+            container.innerHTML = '<div style="color:#94a3b8; font-size:12px; padding:10px;">Loading pages…</div>';
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                container.innerHTML = '';
+
+                const maxThumbs = Math.min(pdf.numPages, 8);
+                for (let i = 1; i <= maxThumbs; i++) {
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({ scale: 0.3 });
+                    const canvas = document.createElement('canvas');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+                    const thumb = document.createElement('div');
+                    thumb.className = 'pdf-page-thumb';
+                    thumb.title = `Page ${i}`;
+                    thumb.appendChild(canvas);
+
+                    const label = document.createElement('div');
+                    label.style.cssText = 'font-size:9px; color:#94a3b8; text-align:center; padding:2px 0;';
+                    label.textContent = `p.${i}`;
+                    const wrap = document.createElement('div');
+                    wrap.style.cssText = 'display:flex; flex-direction:column;';
+                    wrap.appendChild(thumb);
+                    wrap.appendChild(label);
+                    container.appendChild(wrap);
+                }
+
+                if (pdf.numPages > maxThumbs) {
+                    const more = document.createElement('div');
+                    more.className = 'pdf-page-thumb';
+                    more.style.cssText = 'background:#f1f5f9; color:#64748b; font-size:11px; border:1px dashed #cbd5e1;';
+                    more.textContent = `+${pdf.numPages - maxThumbs} more`;
+                    container.appendChild(more);
+                }
+            } catch (err) {
+                container.innerHTML = '<div style="color:#ef4444; font-size:12px;">Could not render thumbnails.</div>';
+            }
+        }
+
+        // =============================
+        //  EXTRACT
+        // =============================
+        async function extractText() {
+            if (!currentFile) return;
+
+            const btn = document.getElementById('btnExtract');
+            const label = document.getElementById('btnExtractLabel');
+            btn.disabled = true;
+            label.innerHTML = '<span class="spinner-ring"></span> Extracting…';
+
+            showProgress(5, 'Starting extraction…');
+            clearOutputUI();
+
+            try {
+                let text = '';
+                if (currentMode === 'image') {
+                    text = await extractFromImage(currentFile);
+                } else {
+                    text = await extractFromPdf(currentFile);
+                }
+                displayOutput(text);
+            } catch (err) {
+                displayOutput(`Error during extraction:\n${err.message}`);
+            }
+
+            hideProgress();
+            btn.disabled = false;
+            label.innerHTML = '<i class="fas fa-magic"></i> Extract Again';
+        }
+
+        // -------- IMAGE (Tesseract OCR) --------
+        async function extractFromImage(file) {
+            showProgress(10, 'Loading Tesseract OCR engine…');
+
+            const worker = await Tesseract.createWorker('eng', 1, {
+                logger: (m) => {
+                    if (m.status === 'recognizing text') {
+                        const pct = Math.round(m.progress * 100);
+                        showProgress(10 + pct * 0.85, `Recognising text… ${pct}%`);
+                    }
+                }
+            });
+
+            showProgress(20, 'Analysing image…');
+            const { data } = await worker.recognize(file);
+            await worker.terminate();
+
+            showProgress(100, 'Done!');
+            return data.text.trim();
+        }
+
+        // -------- PDF (PDF.js text layer) --------
+        async function extractFromPdf(file) {
+            showProgress(10, 'Reading PDF…');
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const total = pdf.numPages;
+            let fullText = '';
+
+            for (let i = 1; i <= total; i++) {
+                const pct = Math.round((i / total) * 85);
+                showProgress(10 + pct, `Extracting page ${i} of ${total}…`);
+
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                const pageText = content.items.map(item => item.str).join(' ');
+                fullText += `--- Page ${i} ---\n${pageText.trim()}\n\n`;
+            }
+
+            showProgress(100, 'Done!');
+            return fullText.trim();
+        }
+
+        // =============================
+        //  OUTPUT DISPLAY
+        // =============================
+        function displayOutput(text) {
+            const area = document.getElementById('extractedTextArea');
+            const empty = document.getElementById('emptyState');
+
+            empty.style.display = 'none';
+            area.style.display = 'block';
+            area.value = text;
+
+            // Update stats
+            const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+            const chars = text.length;
+            document.getElementById('wordCount').textContent = `${words} words`;
+            document.getElementById('charCount').textContent = `${chars} chars`;
+            document.getElementById('outputStats').style.display = 'flex';
+            document.getElementById('btnCopy').style.display = 'flex';
+            document.getElementById('btnClear').style.display = 'flex';
+        }
+
+        function clearOutputUI() {
+            const area = document.getElementById('extractedTextArea');
+            const empty = document.getElementById('emptyState');
+            area.style.display = 'none';
+            area.value = '';
+            empty.style.display = 'flex';
+            document.getElementById('outputStats').style.display = 'none';
+            document.getElementById('btnCopy').style.display = 'none';
+            document.getElementById('btnClear').style.display = 'none';
+        }
+
+        function clearOutput() {
+            clearOutputUI();
+            document.getElementById('btnExtract').disabled = false;
+            document.getElementById('btnExtractLabel').innerHTML = '<i class="fas fa-magic"></i> Extract Text';
+        }
+
+        // =============================
+        //  COPY
+        // =============================
+        function copyText() {
+            const text = document.getElementById('extractedTextArea').value;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.getElementById('btnCopy');
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                btn.style.background = '#f0fdf4';
+                btn.style.color = '#15803d';
+                btn.style.borderColor = '#86efac';
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+                    btn.style.background = '';
+                    btn.style.color = '';
+                    btn.style.borderColor = '';
+                }, 2000);
+            });
+        }
+
+        // =============================
+        //  PROGRESS
+        // =============================
+        function showProgress(pct, label) {
+            const prog = document.getElementById('extractProgress');
+            prog.classList.add('visible');
+            document.getElementById('progressFill').style.width = pct + '%';
+            document.getElementById('progressLabel').textContent = label;
+        }
+
+        function hideProgress() {
+            document.getElementById('extractProgress').classList.remove('visible');
+            document.getElementById('progressFill').style.width = '0%';
+        }
+    </script>
+
+</body>
+
+</html>
