@@ -396,26 +396,125 @@
             return data.text.trim();
         }
 
-        // -------- PDF (PDF.js text layer) --------
+        // -------- PDF (PDF.js text layer + OCR fallback) --------
         async function extractFromPdf(file) {
             showProgress(10, 'Reading PDF…');
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             const total = pdf.numPages;
             let fullText = '';
+            let needsOcr = false;
+            let ocrWorker = null;
+
+            // First pass: check if this is a scanned PDF (no text layer on page 1)
+            try {
+                const firstPage = await pdf.getPage(1);
+                const firstContent = await firstPage.getTextContent();
+                const firstText = buildPageTextFromItems(firstContent.items);
+                if (firstText.trim().length < 10) {
+                    needsOcr = true;
+                    showProgress(12, 'Scanned PDF detected – Loading OCR engine…');
+                    ocrWorker = await Tesseract.createWorker('eng', 1, {
+                        logger: () => { }  // suppress verbose logs
+                    });
+                }
+            } catch (e) { /* continue */ }
 
             for (let i = 1; i <= total; i++) {
-                const pct = Math.round((i / total) * 85);
-                showProgress(10 + pct, `Extracting page ${i} of ${total}…`);
+                const pct = Math.round((i / total) * 80);
+                showProgress(12 + pct, needsOcr
+                    ? `OCR scanning page ${i} of ${total}…`
+                    : `Extracting page ${i} of ${total}…`);
 
                 const page = await pdf.getPage(i);
-                const content = await page.getTextContent();
-                const pageText = content.items.map(item => item.str).join(' ');
-                fullText += `--- Page ${i} ---\n${pageText.trim()}\n\n`;
+                let pageText = '';
+
+                if (needsOcr) {
+                    // Render page to canvas and run Tesseract OCR
+                    const viewport = page.getViewport({ scale: 2.0 }); // 2x scale for better OCR accuracy
+                    const canvas = document.createElement('canvas');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    const ctx = canvas.getContext('2d');
+                    await page.render({ canvasContext: ctx, viewport }).promise;
+
+                    const { data } = await ocrWorker.recognize(canvas);
+                    pageText = data.text.trim();
+                } else {
+                    // Digital PDF: extract text layer with proper line structure
+                    const content = await page.getTextContent();
+                    pageText = buildPageTextFromItems(content.items);
+                }
+
+                fullText += `--- Page ${i} ---\n${pageText}\n\n`;
             }
+
+            if (ocrWorker) await ocrWorker.terminate();
 
             showProgress(100, 'Done!');
             return fullText.trim();
+        }
+
+        /**
+         * Reconstructs readable text from PDF.js text items.
+         * Groups items by their Y-position (line), preserves natural reading order
+         * and inserts real newlines between lines.
+         */
+        function buildPageTextFromItems(items) {
+            // Filter to only real TextItem objects (those with a `str` property)
+            const textItems = items.filter(item => typeof item.str === 'string');
+
+            if (textItems.length === 0) return '';
+
+            // Group items into lines by their Y transform coordinate
+            // PDF coordinate system: Y increases upward, so we negate for sorting top→bottom
+            const lines = [];
+            const Y_THRESHOLD = 3; // px tolerance to merge items on the same line
+
+            for (const item of textItems) {
+                const y = item.transform ? Math.round(item.transform[5]) : 0;
+                const existingLine = lines.find(l => Math.abs(l.y - y) <= Y_THRESHOLD);
+
+                if (existingLine) {
+                    existingLine.items.push(item);
+                } else {
+                    lines.push({ y, items: [item] });
+                }
+            }
+
+            // Sort lines top-to-bottom (descending Y in PDF = ascending on screen)
+            lines.sort((a, b) => b.y - a.y);
+
+            // Within each line, sort items left-to-right by X
+            const resultLines = lines.map(line => {
+                line.items.sort((a, b) => {
+                    const ax = a.transform ? a.transform[4] : 0;
+                    const bx = b.transform ? b.transform[4] : 0;
+                    return ax - bx;
+                });
+
+                // Join items in the line, adding a space between if the previous
+                // item didn't already end with a space
+                let lineText = '';
+                for (const item of line.items) {
+                    const str = item.str;
+                    if (!str) continue;
+                    if (lineText && !lineText.endsWith(' ') && !str.startsWith(' ')) {
+                        // Check if there's a real gap between items (wide spacing = space)
+                        lineText += ' ';
+                    }
+                    lineText += str;
+                    // hasEOL flag signals an explicit line-end in the PDF
+                    if (item.hasEOL) lineText += '\n';
+                }
+                return lineText.trim();
+            });
+
+            // Join lines, collapse excessive blank lines
+            return resultLines
+                .join('\n')
+                .replace(/\n{3,}/g, '\n\n')  // max 2 consecutive newlines
+                .trim();
         }
 
         // =============================
